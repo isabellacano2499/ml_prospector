@@ -1,0 +1,35 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Project Environment & Secrets
+.env
+.env.local
+.env.*
+
+# Project Data & Logs (Avoid uploading large CSVs/Parquets and local logs to GitHub)
+latino_re_engine/data/
+latino_re_engine/logs/
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS Files
+Thumbs.db
+Desktop.ini
+.DS_Store
