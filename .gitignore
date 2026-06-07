@@ -1,0 +1,33 @@
+# Virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Browser session data (cookies, fingerprint cache)
+realtor_scraper/output/browser_profile/
+
+# Scraped output CSVs and logs (large, regenerable)
+realtor_scraper/output/*.csv
+realtor_scraper/output/*.log
+realtor_scraper/output/debug/
+
+# Latino RE Engine outputs (regenerable from Census API)
+latino_re_engine/data/output/
+latino_re_engine/logs/
+
+# IDE
+.vscode/
+.idea/
+pyrightconfig.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / env
+.env
+*.env
