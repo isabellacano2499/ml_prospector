@@ -63,13 +63,15 @@ COL_ORDER = [
 
 def main():
     parser = argparse.ArgumentParser(description="Enrich Historico Realtors with Instagram")
-    parser.add_argument("--limit",       type=int, default=None,
+    parser.add_argument("--limit",        type=int,  default=None,
                         help="Process only first N records (for testing)")
-    parser.add_argument("--state",       type=str, default=None,
-                        help="Filter by state name (e.g. Texas)")
-    parser.add_argument("--no-headless", action="store_true",
+    parser.add_argument("--state",        type=str,  default=None,
+                        help="Filter to one state (e.g. Texas)")
+    parser.add_argument("--skip-states",  nargs="+", default=None,
+                        help="Skip these states — process everything else (including empty state)")
+    parser.add_argument("--no-headless",  action="store_true",
                         help="Show browser window (required to bypass bot detection)")
-    parser.add_argument("--resume",      type=str, default=None,
+    parser.add_argument("--resume",       type=str,  default=None,
                         help="Path to existing output CSV to resume from")
     args = parser.parse_args()
 
@@ -106,6 +108,11 @@ def main():
     if args.state:
         df = df[df["state"].str.lower() == args.state.lower()].copy()
         logger.info("Filtered to " + args.state + ": " + str(len(df)) + " records")
+
+    if args.skip_states:
+        skip_lower = [s.lower() for s in args.skip_states]
+        df = df[~df["state"].str.lower().isin(skip_lower)].copy()
+        logger.info("Skipping " + str(len(args.skip_states)) + " states | Remaining: " + str(len(df)))
 
     if args.limit:
         df = df.head(args.limit)
