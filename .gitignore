@@ -28,6 +28,9 @@ pyrightconfig.json
 .DS_Store
 Thumbs.db
 
+# Claude Code memory (local only)
+.claude/
+
 # Secrets / env
 .env
 *.env
