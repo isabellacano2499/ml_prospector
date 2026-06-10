@@ -59,6 +59,7 @@ def main():
     parser = argparse.ArgumentParser(description="Enrich MMI realtors with Zillow + Instagram")
     parser.add_argument("--limit",          type=int,   default=None)
     parser.add_argument("--state",          type=str,   default=None, help="Filter by state name")
+    parser.add_argument("--skip-states",    nargs="+",  default=None, help="Skip these states, process the rest")
     parser.add_argument("--no-headless",    action="store_true")
     parser.add_argument("--skip-zillow",    action="store_true")
     parser.add_argument("--skip-instagram", action="store_true")
@@ -87,6 +88,11 @@ def main():
     if args.state:
         df = df[df["state"].str.lower() == args.state.lower()]
         logger.info(f"Filtered to state '{args.state}': {len(df)} realtors")
+
+    if args.skip_states:
+        skip_lower = [s.lower() for s in args.skip_states]
+        df = df[~df["state"].str.lower().isin(skip_lower)]
+        logger.info(f"Skipping {len(args.skip_states)} states | Remaining: {len(df)} realtors")
 
     if args.limit:
         df = df.head(args.limit)
@@ -179,14 +185,22 @@ def main():
                 )
                 if ig:
                     row.update({
-                        "ig_handle":          ig.get("ig_handle"),
-                        "ig_url":             ig.get("ig_url"),
-                        "ig_followers":       ig.get("ig_followers"),
-                        "ig_posts":           ig.get("ig_posts"),
-                        "ig_bio":             ig.get("ig_bio"),
-                        "ig_is_private":      ig.get("ig_is_private"),
-                        "ig_spanish_signals": ig.get("ig_spanish_signals"),
-                        "ig_realtor_signals": ig.get("ig_realtor_signals"),
+                        "ig_handle":           ig.get("ig_handle"),
+                        "ig_url":              ig.get("ig_url"),
+                        "ig_followers":        ig.get("ig_followers"),
+                        "ig_posts":            ig.get("ig_posts"),
+                        "ig_bio":              ig.get("ig_bio"),
+                        "ig_is_private":       ig.get("ig_is_private"),
+                        "ig_spanish_signals":  ig.get("ig_spanish_signals"),
+                        "ig_realtor_signals":  ig.get("ig_realtor_signals"),
+                        "ig_posts_spanish":    ig.get("ig_posts_spanish"),
+                        "ig_mentions_latino":  ig.get("ig_mentions_latino"),
+                        "ig_nahrep":           ig.get("ig_nahrep"),
+                        "ig_community_type":   ig.get("ig_community_type"),
+                        "ig_collaborates":     ig.get("ig_collaborates"),
+                        "ig_area_mentions":    ig.get("ig_area_mentions"),
+                        "ig_content_language": ig.get("ig_content_language"),
+                        "ig_engagement_proxy": ig.get("ig_engagement_proxy"),
                     })
                 time.sleep(random.uniform(*DELAY_GOOGLE))
 
@@ -240,6 +254,9 @@ def _save(records: list[dict], path: Path):
         # Instagram
         "ig_handle", "ig_url", "ig_followers", "ig_posts",
         "ig_bio", "ig_is_private", "ig_spanish_signals", "ig_realtor_signals",
+        "ig_posts_spanish", "ig_mentions_latino", "ig_nahrep",
+        "ig_community_type", "ig_collaborates", "ig_area_mentions",
+        "ig_content_language", "ig_engagement_proxy",
     ]
     existing = [c for c in col_order if c in df.columns]
     df[existing].to_csv(path, index=False)
