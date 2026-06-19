@@ -2,6 +2,9 @@
 HomeSi · ML Prospector — Dashboard
 """
 import re as _re
+import io
+import json
+import joblib
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -9,9 +12,33 @@ import plotly.graph_objects as go
 import streamlit as st
 
 ROOT        = Path(__file__).parent
+DATA_DIR    = ROOT / "data"
 OUTPUT_DIR  = ROOT / "realtor_scraper" / "output"
+MODEL_DIR   = ROOT / "realtor_scraper" / "output" / "model"
 UPLOADS_DIR = ROOT / "realtor_scraper" / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
+
+SPANISH_NAME_WORDS = {
+    "casa","hogar","vive","movil","buena","bueno",
+    "casas","hogares","vida","sol","estrella","luna","tierra",
+    "familia","unidos","latina","latino",
+}
+LATINO_BROKERAGES = {
+    "la rosa","casa buena","movil realty","vive realty","agent trust",
+    "naim real estate","home prime","casa","hogar","latin","hispano",
+    "hispanic","latino","habla","bilingual","multicultural",
+}
+
+def _keyword_match(text: str, keywords: set) -> bool:
+    n = text.lower()
+    for w in keywords:
+        if " " in w:
+            if w in n:
+                return True
+        else:
+            if _re.search(r"\b" + _re.escape(w) + r"\b", n):
+                return True
+    return False
 
 STATE_ABBREV = {
     "AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California",
@@ -33,16 +60,12 @@ if "selected_state" not in st.session_state:
     st.session_state.selected_state = None
 if "n_show" not in st.session_state:
     st.session_state.n_show = 25
+if "uploaded_batches" not in st.session_state:
+    st.session_state.uploaded_batches = []   # list of DataFrames scored in-browser
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 
-@st.cache_data
-def load_realtors() -> pd.DataFrame:
-    files = sorted(OUTPUT_DIR.glob("mmi_scored_*.csv"))
-    if not files:
-        st.error("No se encontro mmi_scored_*.csv en realtor_scraper/output/")
-        st.stop()
-    df = pd.read_csv(files[-1])
+def _normalize_realtors(df: pd.DataFrame) -> pd.DataFrame:
     df["propensity_score"] = pd.to_numeric(df["propensity_score"], errors="coerce").fillna(0)
     df["ig_followers"]     = pd.to_numeric(df["ig_followers"],     errors="coerce")
     for col in [
@@ -53,13 +76,12 @@ def load_realtors() -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-    def build_ig_url(handle):
+    def _ig_url(handle):
         if pd.isna(handle) or str(handle).strip() in ("", "nan"):
             return None
-        h = str(handle).strip().lstrip("@").rstrip("/")
-        return f"https://www.instagram.com/{h}/"
+        return f"https://www.instagram.com/{str(handle).strip().lstrip('@').rstrip('/')}/"
 
-    df["ig_link"] = df["ig_handle"].apply(build_ig_url)
+    df["ig_link"] = df.get("ig_handle", pd.Series(dtype=str)).apply(_ig_url)
     if "batch_name" not in df.columns:
         df["batch_name"] = "carga_original"
     df["batch_name"] = df["batch_name"].fillna("carga_original")
@@ -67,14 +89,103 @@ def load_realtors() -> pd.DataFrame:
 
 
 @st.cache_data
+def load_realtors() -> pd.DataFrame:
+    # En Streamlit Cloud lee desde data/; localmente acepta también output/
+    candidates = [
+        DATA_DIR / "realtors.csv",
+        *sorted(OUTPUT_DIR.glob("mmi_scored_*.csv")),
+    ]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
+        st.error("No se encontró ningún archivo de realtors.")
+        st.stop()
+    return _normalize_realtors(pd.read_csv(path))
+
+
+@st.cache_data
 def load_census() -> pd.DataFrame:
-    path = OUTPUT_DIR / "state_census_summary.csv"
-    if not path.exists():
-        return pd.DataFrame(columns=["state","state_abbr","total_population","hispanic_pop","hispanic_pct"])
-    df = pd.read_csv(path)
-    for col in ["total_population","hispanic_pop","hispanic_pct"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-    return df
+    for p in [DATA_DIR / "state_census_summary.csv",
+              OUTPUT_DIR / "state_census_summary.csv"]:
+        if p.exists():
+            df = pd.read_csv(p)
+            for col in ["total_population", "hispanic_pop", "hispanic_pct"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            return df
+    return pd.DataFrame(columns=["state","state_abbr","total_population","hispanic_pop","hispanic_pct"])
+
+
+@st.cache_data
+def load_model_artifacts():
+    model     = joblib.load(MODEL_DIR / "xgboost_model.pkl")
+    features  = json.load(open(MODEL_DIR / "features.json"))
+    medians   = json.load(open(MODEL_DIR / "medians.json"))
+    sr        = json.load(open(MODEL_DIR / "state_rates.json"))
+    global_r  = sr.pop("__global__", 0.57)
+    return model, features, medians, sr, global_r
+
+
+def score_excel_in_browser(file_bytes: bytes, batch_label: str) -> pd.DataFrame:
+    """Score an uploaded Excel without Instagram scraping — runs entirely in-browser."""
+    model, features, medians, state_rates, global_rate = load_model_artifacts()
+
+    df = pd.read_excel(io.BytesIO(file_bytes), dtype=str).fillna("")
+    df.columns = [c.strip() for c in df.columns]
+    df = df.rename(columns={
+        "First Name":           "first_name",
+        "Last Name":            "last_name",
+        "Company / Account":    "company",
+        "Email":                "email_mmi",
+        "Phone":                "phone_mmi",
+        "State":                "state",
+        "BS Sold # Units":      "units_sold",
+    })
+    if "first_name" in df.columns and "last_name" in df.columns:
+        df["full_name"] = (df["first_name"].str.strip() + " " + df["last_name"].str.strip()).str.strip()
+    if "full_name" not in df.columns:
+        return None
+
+    # Normalize state to full name
+    df["state_clean"] = df["state"].str.strip()
+    df.loc[df["state_clean"].str.len() == 2, "state_clean"] = (
+        df.loc[df["state_clean"].str.len() == 2, "state_clean"]
+        .str.upper().map(STATE_ABBREV)
+    )
+    state_abbr_map = {v: k for k, v in STATE_ABBREV.items()}
+    df["state_abbr"] = df["state_clean"].map(state_abbr_map)
+
+    # Company signals
+    df["company_has_spanish_name"]    = df["company"].fillna("").apply(lambda n: _keyword_match(n, SPANISH_NAME_WORDS))
+    df["company_is_latino_brokerage"] = df["company"].fillna("").apply(lambda n: _keyword_match(n, LATINO_BROKERAGES))
+
+    # Instagram features — all zero (not yet scraped)
+    for col in ["ig_followers_log","ig_posts_log","ig_engagement_proxy_log","content_lang_score"]:
+        df[col] = 0.0
+    df["has_instagram"] = 0
+    for b in ["ig_spanish_signals","ig_realtor_signals","ig_posts_spanish",
+              "ig_mentions_latino","ig_nahrep","ig_collaborates","ig_is_private"]:
+        df[b] = 0
+    for ct in ["first_time_buyer","family_community","relocation","veterans","luxury","investor"]:
+        df["comm_" + ct] = 0
+
+    # State conversion rate
+    df["state_conversion_rate"] = df["state_abbr"].map(state_rates).fillna(global_rate)
+
+    # Feature matrix
+    X = pd.DataFrame(index=df.index)
+    for feat in features:
+        X[feat] = pd.to_numeric(df.get(feat, 0), errors="coerce").fillna(medians.get(feat, 0.0))
+
+    proba = model.predict_proba(X)[:, 1]
+    df["propensity_score"] = (proba * 100).round(1)
+    df["priority_tier"]    = df["propensity_score"].apply(
+        lambda s: "A — Prioridad Alta" if s >= 80 else
+                  "B — Prioridad Media" if s >= 65 else
+                  "C — Seguimiento" if s >= 50 else "D — Baja prioridad"
+    )
+    df["batch_name"] = batch_label
+    df["ig_link"]    = None
+    df["state"]      = df["state_clean"]
+    return _normalize_realtors(df)
 
 
 def build_signal_description(row) -> str:
@@ -231,6 +342,8 @@ h3 { color:#1B4F72 !important; }
 """, unsafe_allow_html=True)
 
 df_all  = load_realtors()
+if st.session_state.uploaded_batches:
+    df_all = pd.concat([df_all] + st.session_state.uploaded_batches, ignore_index=True)
 census  = load_census()
 states_available = sorted(df_all["state"].dropna().unique().tolist())
 all_states_opts  = ["Todos los estados"] + states_available
@@ -531,77 +644,49 @@ with col_dl2:
 # ── Nueva Carga ────────────────────────────────────────────────────────────────
 
 st.markdown("---")
-with st.expander("Procesar nueva lista de realtors", expanded=False):
+with st.expander("Subir nueva lista de realtors", expanded=False):
     st.markdown(
-        "El archivo debe ser Excel (.xlsx) o CSV con las columnas: "
-        "**First Name, Last Name, Company / Account, Email, Phone, State, BS Sold # Units**"
+        "Sube un Excel con las columnas: "
+        "**First Name, Last Name, Company / Account, Email, Phone, State, BS Sold # Units**  \n"
+        "Los realtors se puntuan al instante. El score es parcial hasta que se busque su Instagram."
     )
 
-    tab_path, tab_upload = st.tabs(["Pegar ruta del archivo", "Subir desde el navegador"])
+    uploaded = st.file_uploader(
+        "Selecciona el archivo Excel",
+        type=["xlsx", "xls"],
+        key="new_batch",
+    )
+    batch_label_up = st.text_input(
+        "Nombre para esta carga",
+        placeholder="julio_2026",
+        key="batch_label_up",
+    )
 
-    # ── Opcion A: pegar ruta del explorador ──────────────────────────────────
-    with tab_path:
-        st.caption(
-            "En el Explorador de Windows: click derecho sobre el archivo → "
-            "**Copiar como ruta** → pega aqui abajo"
-        )
-        raw_path = st.text_input(
-            "Ruta del archivo",
-            placeholder=r'C:\Users\Isabella\Desktop\Nueva_Lista.xlsx',
-            key="batch_path",
-        )
-        batch_label_path = st.text_input(
-            "Nombre para esta carga (aparece en la columna Carga)",
-            placeholder="junio_2026",
-            key="batch_label_path",
-        )
-        if raw_path.strip():
-            clean_path  = raw_path.strip().strip('"').strip("'")
-            file_stem   = Path(clean_path).stem
-            label       = batch_label_path.strip() or _re.sub(r"[^a-zA-Z0-9_-]", "_", file_stem)
-            venv        = r"latino_re_engine\.venv\Scripts\python.exe"
-            enricher    = r"realtor_scraper\mmi_enricher.py"
-            scorer      = r"realtor_scraper\score_mmi.py"
-            st.markdown("**Copia y pega esto en la terminal (en la carpeta del proyecto):**")
-            st.code(
-                f'{venv} {enricher} --input "{clean_path}" --batch-name "{label}"\n'
-                f'{venv} {scorer}',
-                language="bash",
-            )
-            st.info(
-                f"Cuando termine, recarga el dashboard — los nuevos realtors apareceran "
-                f"con la etiqueta **{label}** en la columna Carga."
-            )
+    if uploaded:
+        file_stem = uploaded.name.rsplit(".", 1)[0]
+        label     = batch_label_up.strip() or _re.sub(r"[^a-zA-Z0-9_-]", "_", file_stem)
 
-    # ── Opcion B: subir via navegador ─────────────────────────────────────────
-    with tab_upload:
-        uploaded = st.file_uploader(
-            "Selecciona el archivo",
-            type=["xlsx", "xls", "csv"],
-            key="new_batch",
+        already_loaded = any(
+            b["batch_name"].iloc[0] == label
+            for b in st.session_state.uploaded_batches
+            if len(b)
         )
-        batch_label_up = st.text_input(
-            "Nombre para esta carga",
-            placeholder="junio_2026",
-            key="batch_label_up",
-        )
-        if uploaded:
-            save_path  = UPLOADS_DIR / uploaded.name
-            save_path.write_bytes(uploaded.getvalue())
-            file_stem  = uploaded.name.rsplit(".", 1)[0]
-            label      = batch_label_up.strip() or _re.sub(r"[^a-zA-Z0-9_-]", "_", file_stem)
-            saved_rel  = f"realtor_scraper/uploads/{uploaded.name}"
-            venv       = r"latino_re_engine\.venv\Scripts\python.exe"
-            enricher   = r"realtor_scraper\mmi_enricher.py"
-            scorer     = r"realtor_scraper\score_mmi.py"
-            st.success(f"Guardado en: `{saved_rel}`")
-            st.markdown("**Copia y pega esto en la terminal:**")
-            st.code(
-                f'{venv} {enricher} --input "{saved_rel}" --batch-name "{label}"\n'
-                f'{venv} {scorer}',
-                language="bash",
-            )
-            st.info(
-                f"Cuando termine, recarga el dashboard — los nuevos realtors apareceran "
-                f"con la etiqueta **{label}** en la columna Carga."
-            )
+
+        if not already_loaded:
+            with st.spinner(f"Puntuando {label}…"):
+                scored = score_excel_in_browser(uploaded.getvalue(), label)
+            if scored is not None and len(scored):
+                st.session_state.uploaded_batches.append(scored)
+                st.success(
+                    f"{len(scored):,} realtors puntuados y añadidos con etiqueta **{label}**. "
+                    "Puedes filtrarlos en el sidebar con 'Filtrar por subida'."
+                )
+                st.info(
+                    "Score parcial — sin datos de Instagram. "
+                    "Para el score completo con Instagram, corre el pipeline localmente y actualiza el repo."
+                )
+                st.rerun()
+            else:
+                st.error("No se pudo procesar el archivo. Verifica que tenga las columnas correctas.")
+        else:
+            st.info(f"La carga **{label}** ya está en la sesión actual.")
