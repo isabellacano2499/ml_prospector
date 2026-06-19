@@ -695,3 +695,52 @@ with st.expander("Subir nueva lista de realtors", expanded=False):
                 st.error("No se pudo procesar el archivo. Verifica que tenga las columnas correctas.")
         else:
             st.info(f"La carga **{label}** ya está en la sesión actual.")
+
+st.markdown("---")
+with st.expander("Como obtener el score completo con Instagram (paso a paso)", expanded=False):
+    st.markdown("""
+### El score que ves al subir el Excel es parcial
+Sin datos de Instagram, el modelo no puede evaluar si el realtor publica en español,
+cuántos seguidores tiene ni si menciona la comunidad latina.
+Para el score completo hay que buscar su Instagram primero.
+
+---
+
+### Paso a paso para enriquecer con Instagram
+
+**1. Abre Claude Code en tu computadora**
+En la terminal de VS Code o en la app de Claude Code, escríbele esto:
+
+> *"Tengo un nuevo Excel de realtors en `realtor_scraper/uploads/NOMBRE_DEL_ARCHIVO.xlsx`.
+> Corre el pipeline completo: primero `mmi_enricher.py` con ese archivo y el batch name
+> que quieras, y después `score_mmi.py`. Cuando termine, haz commit y push a GitHub."*
+
+Claude Code va a ejecutar los comandos, monitorear el progreso y subir los resultados.
+
+---
+
+**2. Lo que hace el pipeline automáticamente**
+
+| Paso | Script | Qué hace |
+|---|---|---|
+| 1 | `mmi_enricher.py` | Busca el Instagram de cada realtor en Google, entra al perfil, lee la bio, seguidores, idioma del contenido y señales latinas |
+| 2 | `score_mmi.py` | Aplica el modelo XGBoost con todos los datos y genera el score final |
+| 3 | `git push` | Sube el nuevo CSV a GitHub → el dashboard se actualiza solo |
+
+---
+
+**3. Cuánto tarda**
+
+El scraping de Instagram tarda entre **3 y 8 segundos por realtor** para no activar
+el bot-detector. Para 100 realtors, espera unos 15-20 minutos.
+Para listas grandes puedes pedirle a Claude Code que corra solo un estado:
+
+> *"Corre el enricher solo para Texas con `--state Texas`"*
+
+---
+
+**4. Cuando termine**
+
+Recarga esta página — los realtors nuevos aparecerán en la lista con sus señales
+de Instagram y un score actualizado. Filtralos por nombre de carga en el sidebar.
+""")
