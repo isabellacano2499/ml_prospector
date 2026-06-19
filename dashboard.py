@@ -66,8 +66,11 @@ if "uploaded_batches" not in st.session_state:
 # ── Data loading ───────────────────────────────────────────────────────────────
 
 def _normalize_realtors(df: pd.DataFrame) -> pd.DataFrame:
-    df["propensity_score"] = pd.to_numeric(df["propensity_score"], errors="coerce").fillna(0)
-    df["ig_followers"]     = pd.to_numeric(df["ig_followers"],     errors="coerce")
+    df["propensity_score"] = pd.to_numeric(df.get("propensity_score", 0), errors="coerce").fillna(0)
+    if "ig_followers" in df.columns:
+        df["ig_followers"] = pd.to_numeric(df["ig_followers"], errors="coerce")
+    else:
+        df["ig_followers"] = np.nan
     for col in [
         "ig_spanish_signals","ig_posts_spanish","ig_mentions_latino","ig_nahrep",
         "company_is_latino_brokerage","company_has_spanish_name",
@@ -75,13 +78,15 @@ def _normalize_realtors(df: pd.DataFrame) -> pd.DataFrame:
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+        else:
+            df[col] = 0
 
     def _ig_url(handle):
         if pd.isna(handle) or str(handle).strip() in ("", "nan"):
             return None
         return f"https://www.instagram.com/{str(handle).strip().lstrip('@').rstrip('/')}/"
 
-    df["ig_link"] = df.get("ig_handle", pd.Series(dtype=str)).apply(_ig_url)
+    df["ig_link"] = df["ig_handle"].apply(_ig_url) if "ig_handle" in df.columns else None
     if "batch_name" not in df.columns:
         df["batch_name"] = "carga_original"
     df["batch_name"] = df["batch_name"].fillna("carga_original")
