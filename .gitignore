@@ -15,6 +15,9 @@ realtor_scraper/output/*.csv
 realtor_scraper/output/*.log
 realtor_scraper/output/debug/
 
+# Uploaded Excel files from dashboard (user data, not code)
+realtor_scraper/uploads/
+
 # Latino RE Engine outputs (regenerable from Census API)
 latino_re_engine/data/output/
 latino_re_engine/logs/

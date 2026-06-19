@@ -65,11 +65,17 @@ def main():
     parser.add_argument("--skip-instagram", action="store_true")
     parser.add_argument("--resume",         type=str,   default=None,
                         help="Path to existing output CSV to resume from")
+    parser.add_argument("--input",          type=str,   default=None,
+                        help="Path to Excel file to process (default: MMI Data.xlsx)")
+    parser.add_argument("--batch-name",     type=str,   default=None,
+                        help="Label for this batch (appears in output as batch_name column)")
     args = parser.parse_args()
 
     # ── Load MMI data ─────────────────────────────────────────────────────────
-    logger.info(f"Reading {MMI_FILE.name}...")
-    df = pd.read_excel(MMI_FILE, dtype=str).fillna("")
+    input_path = Path(args.input) if args.input else MMI_FILE
+    batch_name = args.batch_name or input_path.stem.replace(" ", "_")
+    logger.info(f"Reading {input_path.name}  [batch: {batch_name}]...")
+    df = pd.read_excel(input_path, dtype=str).fillna("")
     df.columns = [c.strip() for c in df.columns]
 
     # Normalize column names
@@ -142,6 +148,7 @@ def main():
                 continue
 
             row = _base_record(rec)
+            row["batch_name"] = batch_name
 
             # ── Zillow enrichment ─────────────────────────────────────────────
             if not args.skip_zillow:
@@ -246,7 +253,7 @@ def _save(records: list[dict], path: Path):
     col_order = [
         # MMI original
         "full_name", "first_name", "last_name", "company", "state",
-        "email_mmi", "phone_mmi", "units_sold", "loan_volume",
+        "email_mmi", "phone_mmi", "units_sold", "loan_volume", "batch_name",
         # Zillow enriched
         "zillow_rating", "zillow_reviews", "zillow_speaks_spanish",
         "zillow_years_exp", "zillow_sales_12m", "zillow_total_sales",

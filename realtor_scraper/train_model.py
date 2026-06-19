@@ -17,7 +17,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from pathlib import Path
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import (
     roc_auc_score, classification_report,
     confusion_matrix, ConfusionMatrixDisplay,
@@ -38,23 +38,6 @@ NUMERIC_FEATURES = [
     "ig_followers_log",
     "ig_posts_log",
     "ig_engagement_proxy_log",
-    # Call history features (0 for realtors never called)
-    "was_called",
-    "call_duration_min",
-    "total_calls_clip",
-    "answer_rate",
-    # Census + market
-    "census_hispanic_pct",
-    "census_overall_score",
-    "census_median_household_income",
-    "census_first_home_buyer_score",
-    "census_spanish_marketing_opportunity",
-    "census_lep_spanish_pct",
-    "census_bilingual_spanish_pct",
-    "census_homeownership_rate",
-    "census_latino_market_score",
-    "census_first_time_buyer_potential",
-    "state_conversion_rate",
     "content_lang_score",
 ]
 
@@ -121,12 +104,25 @@ for ctype in ["first_time_buyer", "family_community", "relocation",
         df["ig_community_type"].fillna("").str.contains(ctype).astype(int)
     )
 
-# Target-encode state: replace state with its historical conversion rate
-# (prevents leakage: computed on full dataset since we have no separate test set —
-#  cross-val will still give an unbiased AUC estimate)
-state_rates = df.groupby("state_abbr")["label"].mean().rename("state_conversion_rate")
-global_rate  = df["label"].mean()
+# Target-encode state with Bayesian smoothing.
+# Raw rates on small states are unreliable: Nevada had n=22 → 100%, Rhode Island n=1 → 100%.
+# Smoothing formula: (state_positives + m * global_rate) / (state_n + m)
+# m=30 means: a state needs ≥30 samples before its rate is trusted over the global average.
+global_rate   = df["label"].mean()
+m             = 30
+state_counts  = df.groupby("state_abbr")["label"].count()
+state_sums    = df.groupby("state_abbr")["label"].sum()
+state_rates   = ((state_sums + m * global_rate) / (state_counts + m)).rename("state_conversion_rate")
 df["state_conversion_rate"] = df["state_abbr"].map(state_rates).fillna(global_rate)
+
+print("\nstate_conversion_rate (smoothed, top estados en MMI):")
+for st, raw, smooth in sorted(
+    [(s, state_sums[s]/state_counts[s], state_rates[s])
+     for s in ["CA","NV","TX","FL","RI","MO","MI","OH"] if s in state_rates.index],
+    key=lambda x: x[2]
+):
+    n = int(state_counts[st])
+    print(f"  {st}  n={n:4}  raw={raw:.3f}  smoothed={smooth:.3f}")
 
 # Boolean columns: True/False → 1/0
 for col in BOOLEAN_FEATURES:
@@ -153,6 +149,37 @@ print(f"  Feature matrix: {X.shape[0]:,} rows x {X.shape[1]} features")
 print(f"  NaN residual: {X.isna().sum().sum()} (should be 0)")
 
 
+# ── Sample weights from call history ─────────────────────────────────────────
+# Call data is NOT a feature — it informs how confident we are in each label.
+# Qualified + long call  → we're very sure this is a good lead (weight 2.0)
+# Qualified + medium call → confident positive (weight 1.5)
+# Qualified + short call  → answered but maybe lukewarm (weight 1.0)
+# Discarded + was called  → confirmed rejection, trust this label more (weight 1.5)
+# Discarded + never called → uncertain; might have answered if called (weight 0.8)
+
+print("\nCalculando sample weights por calidad de llamada...")
+_zero        = pd.Series(0.0, index=df.index)
+_call_raw    = df["was_called"].fillna(0).astype(float)        if "was_called"        in df.columns else _zero
+_dur_raw     = df["call_duration_min"].fillna(0).astype(float) if "call_duration_min" in df.columns else _zero
+was_called   = _call_raw > 0
+duration_min = _dur_raw
+qualified    = y == 1
+
+sample_weights = pd.Series(1.0, index=df.index)
+sample_weights[qualified  & was_called & (duration_min >= 2)]               = 2.0
+sample_weights[qualified  & was_called & (duration_min >= 1) & (duration_min < 2)] = 1.5
+sample_weights[qualified  & was_called & (duration_min < 1)]                = 1.0
+sample_weights[qualified  & ~was_called]                                    = 1.0
+sample_weights[~qualified & was_called]                                     = 1.5
+sample_weights[~qualified & ~was_called]                                    = 0.8
+
+w = sample_weights.values
+print(f"  Qualified con llamada larga (>=2 min, w=2.0): {(qualified & was_called & (duration_min>=2)).sum()}")
+print(f"  Qualified con llamada media (1-2 min, w=1.5): {(qualified & was_called & (duration_min>=1) & (duration_min<2)).sum()}")
+print(f"  Discarded con llamada confirmada (w=1.5):     {(~qualified & was_called).sum()}")
+print(f"  Discarded sin llamada (incertidumbre, w=0.8): {(~qualified & ~was_called).sum()}")
+
+
 # ── Train XGBoost ─────────────────────────────────────────────────────────────
 
 print("\nEntrenando XGBoost...")
@@ -175,15 +202,29 @@ model = xgb.XGBClassifier(
     n_jobs=-1,
 )
 
-# 5-fold stratified cross-validation — gives unbiased AUC estimate
+# 5-fold stratified cross-validation — manual loop to pass sample_weight per fold
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-cv_auc = cross_val_score(model, X, y, cv=cv, scoring="roc_auc", n_jobs=-1)
+fold_scores = []
+for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y), 1):
+    X_tr,  X_val  = X.iloc[tr_idx],  X.iloc[val_idx]
+    y_tr,  y_val  = y.iloc[tr_idx],  y.iloc[val_idx]
+    w_tr          = w[tr_idx]
+    m_fold = xgb.XGBClassifier(
+        n_estimators=400, max_depth=5, learning_rate=0.04,
+        subsample=0.8, colsample_bytree=0.75, min_child_weight=3,
+        reg_alpha=0.1, reg_lambda=1.0, scale_pos_weight=scale_pw,
+        eval_metric="auc", random_state=42, n_jobs=-1,
+    )
+    m_fold.fit(X_tr, y_tr, sample_weight=w_tr)
+    fold_scores.append(roc_auc_score(y_val, m_fold.predict_proba(X_val)[:, 1]))
+    print(f"    Fold {fold}: AUC = {fold_scores[-1]:.4f}")
 
+cv_auc = np.array(fold_scores)
 print(f"\n  AUC cross-val (5-fold): {cv_auc.mean():.3f} +/- {cv_auc.std():.3f}")
 print(f"  Folds: {[round(s, 3) for s in cv_auc]}")
 
-# Train final model on all data
-model.fit(X, y)
+# Train final model on all data with call-quality weights
+model.fit(X, y, sample_weight=w)
 
 # Training-set metrics (optimistic but useful for threshold calibration)
 y_prob  = model.predict_proba(X)[:, 1]
