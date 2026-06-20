@@ -323,24 +323,86 @@ def render_card(row) -> str:
 st.set_page_config(page_title="HomeSi Prospector", layout="wide")
 st.markdown("""
 <style>
-/* Sidebar */
-[data-testid="stSidebar"] { background-color:#1B4F72 !important; }
-[data-testid="stSidebar"] * { color:white !important; }
-[data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg { fill:#F39C12 !important; color:#F39C12 !important; }
-[data-testid="stSidebar"] [data-testid="stTooltipIcon"]:hover svg { fill:#f8c471 !important; }
-[data-testid="stSidebar"] .stSelectbox > div > div { background:#1e5f88 !important; border-color:#2980b9 !important; }
-[data-testid="stSidebar"] .stCheckbox label span { color:white !important; }
-[data-testid="stSidebar"] .stButton button {
-    background:#F39C12; color:#000 !important; border:none;
-    border-radius:8px; width:100%; font-weight:700; padding:8px 0;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* Fuente global */
+html, body, [class*="css"], [data-testid="stSidebar"] * {
+    font-family: 'Inter', sans-serif !important;
 }
-[data-testid="stSidebar"] .stButton button:hover { background:#e67e22; }
+
+/* Sidebar base */
+[data-testid="stSidebar"] {
+    background: linear-gradient(160deg, #1a3f5c 0%, #1B4F72 60%, #1a5276 100%) !important;
+}
+[data-testid="stSidebar"] * { color: white !important; }
+
+/* Titulo del sidebar */
+[data-testid="stSidebar"] h2 {
+    font-size: 1.45rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.3px !important;
+    color: white !important;
+    margin-bottom: 2px !important;
+}
+
+/* Labels de filtros */
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stSlider label,
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stMultiSelect label {
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.6px !important;
+    text-transform: uppercase !important;
+    color: rgba(255,255,255,0.75) !important;
+}
+
+/* Texto de caption */
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] small {
+    color: rgba(255,255,255,0.55) !important;
+    font-size: 0.74rem !important;
+    line-height: 1.5 !important;
+}
+
+/* Inputs y selectbox */
+[data-testid="stSidebar"] .stSelectbox > div > div {
+    background: rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+}
+[data-testid="stSidebar"] .stMultiSelect > div > div {
+    background: rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 8px !important;
+}
+
+/* Checkbox */
+[data-testid="stSidebar"] .stCheckbox label span { color: white !important; font-size: 0.86rem !important; }
+
+/* Boton */
+[data-testid="stSidebar"] .stButton button {
+    background: #F39C12; color: #000 !important; border: none;
+    border-radius: 8px; width: 100%; font-weight: 700;
+    padding: 9px 0; font-size: 0.88rem; letter-spacing: 0.2px;
+    transition: background 0.2s;
+}
+[data-testid="stSidebar"] .stButton button:hover { background: #e67e22; }
+
+/* Icono de ayuda */
+[data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg { fill:#F39C12 !important; }
+[data-testid="stSidebar"] [data-testid="stTooltipIcon"]:hover svg { fill:#f8c471 !important; }
+
+/* Divider */
+[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; margin: 12px 0 !important; }
+
 /* Main */
-.main .block-container { padding-top:1.5rem; padding-bottom:2rem; }
-.metric-card { background:#f0f5fb; border-radius:12px; padding:14px 18px; text-align:center; }
-.metric-num  { font-size:1.8rem; font-weight:800; color:#1B4F72; line-height:1; }
-.metric-lbl  { font-size:.76rem; color:#666; margin-top:5px; font-weight:500; }
-h3 { color:#1B4F72 !important; }
+.main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+.metric-card { background: #f0f5fb; border-radius: 12px; padding: 14px 18px; text-align: center; }
+.metric-num  { font-size: 1.8rem; font-weight: 800; color: #1B4F72; line-height: 1; }
+.metric-lbl  { font-size: .76rem; color: #666; margin-top: 5px; font-weight: 500; }
+h3 { color: #1B4F72 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -354,9 +416,14 @@ all_states_opts  = ["Todos los estados"] + states_available
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("## HomeSi Prospector")
-    st.markdown("Selecciona un estado en el **mapa** o busca aqui abajo.")
-    st.markdown("")
+    st.markdown("""
+<div style='padding:4px 0 18px 0;'>
+  <div style='font-size:1.45rem;font-weight:800;letter-spacing:-0.3px;line-height:1.2;'>HomeSi Prospector</div>
+  <div style='font-size:0.8rem;color:rgba(255,255,255,0.6);margin-top:6px;font-weight:400;'>
+    Selecciona un estado en el <b style="color:white;">mapa</b> o filtra aqui abajo
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     # State search/select — synced with map click
     current = st.session_state.selected_state or "Todos los estados"
