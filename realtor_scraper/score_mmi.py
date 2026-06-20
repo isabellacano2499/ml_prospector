@@ -223,10 +223,10 @@ df["propensity_score"] = scores
 
 # ── Priority tier ─────────────────────────────────────────────────────────────
 def tier(s):
-    if s >= 80: return "A — Prioridad Alta"
-    if s >= 65: return "B — Prioridad Media"
-    if s >= 50: return "C — Seguimiento"
-    return "D — Baja prioridad"
+    if s >= 80: return "A"
+    if s >= 65: return "B"
+    if s >= 50: return "C"
+    return "D"
 
 df["priority_tier"] = df["propensity_score"].apply(tier)
 

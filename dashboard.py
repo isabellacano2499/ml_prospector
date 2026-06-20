@@ -183,9 +183,7 @@ def score_excel_in_browser(file_bytes: bytes, batch_label: str) -> pd.DataFrame:
     proba = model.predict_proba(X)[:, 1]
     df["propensity_score"] = (proba * 100).round(1)
     df["priority_tier"]    = df["propensity_score"].apply(
-        lambda s: "A — Prioridad Alta" if s >= 80 else
-                  "B — Prioridad Media" if s >= 65 else
-                  "C — Seguimiento" if s >= 50 else "D — Baja prioridad"
+        lambda s: "A" if s >= 80 else "B" if s >= 65 else "C" if s >= 50 else "D"
     )
     df["batch_name"] = batch_label
     df["ig_link"]    = None
