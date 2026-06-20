@@ -558,11 +558,34 @@ fig.update_layout(
 )
 
 st.markdown("### Hispanohablantes por Estado")
-st.caption(
-    "Tono: % de poblacion hispana (Census ACS 2024)  ·  "
-    "Burbujas: realtors en MMI (tamano) y score promedio (color)  ·  "
-    "**Haz click en una burbuja** o usa el selector del panel izquierdo"
-)
+st.markdown("""
+<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;
+            font-size:0.78rem;color:#555;margin-bottom:6px;line-height:1.6;">
+  <span>
+    <span style="display:inline-block;width:52px;height:10px;border-radius:4px;
+                 background:linear-gradient(to right,#e8f4f8,#2e86c1,#1b2a6b);
+                 vertical-align:middle;margin-right:5px;"></span>
+    Color del estado = % poblacion hispanohablante &nbsp;<b style="color:#1b2a6b;">azul oscuro = mas hispanos</b>
+  </span>
+  <span>
+    <span style="display:inline-flex;gap:4px;align-items:center;vertical-align:middle;margin-right:5px;">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#888;opacity:.5;"></span>
+      <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#888;opacity:.7;"></span>
+      <span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#888;"></span>
+    </span>
+    Tamano del circulo = cantidad de realtors en ese estado
+  </span>
+  <span>
+    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;
+                 background:linear-gradient(135deg,#f9ebea,#f39c12,#1a7a4a);
+                 vertical-align:middle;margin-right:5px;"></span>
+    Color del circulo = score promedio &nbsp;<b style="color:#1a7a4a;">verde = mejor score</b>
+  </span>
+  <span style="color:#1B4F72;font-weight:600;">
+    Click en un circulo para ver los realtors de ese estado
+  </span>
+</div>
+""", unsafe_allow_html=True)
 
 chart_event = st.plotly_chart(
     fig, use_container_width=True, key="map_chart",
