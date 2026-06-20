@@ -527,9 +527,8 @@ fig.add_trace(go.Scattergeo(
     marker=dict(
         size       = np.sqrt(map_df["n_realtors"].clip(1)) * 3.2,
         color      = map_df["avg_score"],
-        cmin=map_df["avg_score"].min(),
-        cmax=map_df["avg_score"].max(),
-        colorscale = [[0,"#f9ebea"],[0.5,"#f39c12"],[1,"#1a7a4a"]],
+        cmin=25, cmax=75,
+        colorscale = [[0,"#f9ebea"],[0.45,"#f39c12"],[1,"#1a7a4a"]],
         colorbar   = dict(title="Score<br>promedio", thickness=12, len=0.42, x=1.01, xanchor="left", y=0.3, yanchor="top"),
         line=dict(width=1.5, color="white"),
         opacity=0.88,
