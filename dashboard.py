@@ -350,11 +350,11 @@ html, body, [class*="css"], [data-testid="stSidebar"] * {
 [data-testid="stSidebar"] .stSlider label,
 [data-testid="stSidebar"] .stSelectbox label,
 [data-testid="stSidebar"] .stMultiSelect label {
-    font-size: 0.78rem !important;
+    font-size: 0.7rem !important;
     font-weight: 600 !important;
-    letter-spacing: 0.6px !important;
+    letter-spacing: 0.5px !important;
     text-transform: uppercase !important;
-    color: rgba(255,255,255,0.75) !important;
+    color: rgba(255,255,255,0.7) !important;
 }
 
 /* Texto de caption */
@@ -393,6 +393,12 @@ html, body, [class*="css"], [data-testid="stSidebar"] * {
 /* Icono de ayuda */
 [data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg { fill:#F39C12 !important; }
 [data-testid="stSidebar"] [data-testid="stTooltipIcon"]:hover svg { fill:#f8c471 !important; }
+
+/* Ocultar texto del boton de colapsar sidebar */
+[data-testid="stSidebar"] button[kind="header"] span { display: none !important; }
+[data-testid="collapsedControl"] { font-size: 0 !important; }
+[data-testid="stSidebarCollapseButton"] span { font-size: 0 !important; color: transparent !important; }
+button[data-testid="stBaseButton-headerNoPadding"] span { display: none !important; }
 
 /* Divider */
 [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; margin: 12px 0 !important; }
